@@ -149,12 +149,36 @@ export async function getMessage(config: any, folder: string, uid: number) {
         replyTo: addresses(parsed.replyTo && 'value' in parsed.replyTo ? parsed.replyTo.value : []),
         text: parsed.text || '',
         html: typeof parsed.html === 'string' ? parsed.html : '',
-        attachments: (parsed.attachments || []).map((item: any) => ({
+        attachments: (parsed.attachments || []).map((item: any, index: number) => ({
+          id: `att-${index}`,
           filename: item.filename || 'attachment',
           contentType: item.contentType,
           size: item.size,
-          contentId: item.cid || null
+          contentId: item.cid || null,
+          contentBase64: item.content ? item.content.toString('base64') : ''
         }))
+      };
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+export async function getAttachment(config: any, folder: string, uid: number, attachmentIndex: number) {
+  return withImap(config, async (client: any) => {
+    const lock = await client.getMailboxLock(folder);
+    try {
+      const message = await client.fetchOne(uid, { source: true }, { uid: true });
+      if (!message || !message.source) throw new AppError(404, 'MESSAGE_NOT_FOUND', 'Message not found.');
+      const parsed = await simpleParser(message.source);
+      const atts = parsed.attachments || [];
+      const target = atts[attachmentIndex];
+      if (!target) throw new AppError(404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found.');
+      return {
+        filename: target.filename || 'attachment',
+        contentType: target.contentType || 'application/octet-stream',
+        size: target.size || target.content.length,
+        content: target.content
       };
     } finally {
       lock.release();
@@ -165,6 +189,23 @@ export async function getMessage(config: any, folder: string, uid: number) {
 export async function sendMessage(config: any, message: any) {
   const fallbackName = String(config.senderName || config.email.split('@')[0] || 'Mailbox user').trim();
   const fromName = String(message.fromName || fallbackName).trim().slice(0, 120) || 'Mailbox user';
+
+  const headers: Record<string, string> = {};
+  if (message.priority && message.priority !== '3') {
+    headers['X-Priority'] = message.priority;
+    headers['Importance'] = message.priority === '1' || message.priority === '2' ? 'High' : 'Low';
+  }
+  if (message.read_receipt) {
+    headers['Disposition-Notification-To'] = config.email;
+    headers['Return-Receipt-To'] = config.email;
+  }
+
+  const formattedAttachments = (message.attachments || []).map((att: any) => ({
+    filename: att.filename,
+    content: Buffer.from(att.contentBase64, 'base64'),
+    contentType: att.contentType
+  }));
+
   const mail = {
     from: { name: fromName, address: config.email },
     to: message.to,
@@ -173,7 +214,8 @@ export async function sendMessage(config: any, message: any) {
     subject: message.subject,
     text: message.text,
     html: message.html,
-    attachments: message.attachments || []
+    attachments: formattedAttachments,
+    headers
   };
   const raw = await new MailComposer(mail).compile().build();
   const info: any = await smtpTransport(config).sendMail(mail);
@@ -189,9 +231,7 @@ export async function sendMessage(config: any, message: any) {
         savedToSent = true;
       }
     });
-  } catch {
-    // Sending succeeded. A failure to copy to Sent must not report a false send failure.
-  }
+  } catch {}
 
   return { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected, savedToSent };
 }

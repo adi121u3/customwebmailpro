@@ -59,13 +59,25 @@ export const settingsSchema = z.object({
   }
 });
 
+export const localAttachmentSchema = z.object({
+  id: z.string().uuid().optional(),
+  filename: z.string().min(1).max(255),
+  contentType: z.string().min(1).max(255).default('application/octet-stream'),
+  size: z.number().int().min(0).max(20_000_000),
+  contentBase64: z.string().max(27_000_000).regex(/^[A-Za-z0-9+/]*={0,2}$/, 'Attachment content is not valid base64')
+}).strict().refine((value: any) => Buffer.byteLength(value.contentBase64, 'base64') === value.size, 'Attachment size does not match its content');
+
 export const sendSchema = z.object({
   to: addressList.refine((value: any) => value.length > 0, 'At least one recipient is required'),
   cc: addressList,
   bcc: addressList,
   subject: z.string().max(998).default(''),
   text: z.string().max(5_000_000).optional(),
-  html: z.string().max(5_000_000).optional()
+  html: z.string().max(5_000_000).optional(),
+  attachments: z.array(localAttachmentSchema).max(25).optional().default([]),
+  priority: z.enum(['1', '2', '3', '4', '5']).optional().default('3'),
+  read_receipt: z.boolean().optional().default(false),
+  fromName: z.string().trim().max(120).optional().default('')
 }).refine((value: any) => value.text || value.html, { message: 'A message body is required' });
 
 export const folderQuerySchema = z.object({
@@ -113,14 +125,6 @@ export const rackspaceSendResendSchema = z.object({
   originalFolder: z.string().min(1).max(1000),
   originalUid: z.union([z.string().regex(/^\d+$/), z.number().int().positive()])
 }).strict();
-
-export const localAttachmentSchema = z.object({
-  id: z.string().uuid().optional(),
-  filename: z.string().min(1).max(255),
-  contentType: z.string().min(1).max(255).default('application/octet-stream'),
-  size: z.number().int().min(0).max(20_000_000),
-  contentBase64: z.string().max(27_000_000).regex(/^[A-Za-z0-9+/]*={0,2}$/, 'Attachment content is not valid base64')
-}).strict().refine((value: any) => Buffer.byteLength(value.contentBase64, 'base64') === value.size, 'Attachment size does not match its content');
 
 export const localMessageSchema = z.object({
   from: z.string().trim().email().max(320).optional().default(''),

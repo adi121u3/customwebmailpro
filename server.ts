@@ -10,6 +10,7 @@ import { loadMailConfig, publicMailConfig, saveMailConfig } from './backend/conf
 import { autoDiscoverConfig } from './src/autodiscover';
 import { AppError, publicError } from './backend/errors.js';
 import {
+  getAttachment,
   getMessage,
   bulkMessageAction,
   listFolders,
@@ -40,7 +41,7 @@ import { createServer as createViteServer } from 'vite';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DIST_PATH = path.join(ROOT, 'dist');
 const HOST = process.env.HOST || '0.0.0.0';
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 const APP_TOKEN = process.env.APP_TOKEN || '';
 const localStore = getLocalMailStore();
 const rackspaceSessionExtension = new RackspaceSessionExtension();
@@ -49,6 +50,8 @@ const allowedOrigins = new Set([
   `http://localhost:${PORT}`,
   'http://127.0.0.1:3000',
   'http://localhost:3000',
+  'http://127.0.0.1:3001',
+  'http://localhost:3001',
   'http://127.0.0.1:5173',
   'http://localhost:5173',
   ...(process.env.FRONTEND_ORIGIN || '').split(',').map(value => value.trim()).filter(Boolean)
@@ -242,6 +245,21 @@ app.get('/api/messages/:uid', async (req, res, next) => {
     if (!Number.isSafeInteger(uid) || uid < 1) throw new AppError(400, 'INVALID_UID', 'UID must be a positive integer.');
     const { folder } = parse(messageQuerySchema, req.query);
     res.json(await getMessage(await requireConfig(), folder, uid));
+  } catch (error) { next(error); }
+});
+
+app.get('/api/messages/:uid/attachments/:index', async (req, res, next) => {
+  try {
+    const uid = Number(req.params.uid);
+    const index = Number(req.params.index);
+    if (!Number.isSafeInteger(uid) || uid < 1 || !Number.isSafeInteger(index) || index < 0) {
+      throw new AppError(400, 'INVALID_PARAMS', 'Valid message UID and attachment index are required.');
+    }
+    const { folder } = parse(messageQuerySchema, req.query);
+    const att = await getAttachment(await requireConfig(), folder, uid, index);
+    res.setHeader('Content-Type', att.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(att.filename)}"`);
+    res.send(att.content);
   } catch (error) { next(error); }
 });
 

@@ -393,8 +393,8 @@ export default function App() {
     });
   };
 
-  const handleSaveDraft = async (windowId: string, form: any) => {
-    const res = await api.post('/local/drafts', {
+  const handleSaveDraft = async (windowId: string, form: any, existingDraftId?: string) => {
+    const payload = {
       operation: form.operation || 'new',
       message: {
         from: form.from,
@@ -407,8 +407,14 @@ export default function App() {
         text: form.body ? form.body.replace(/<[^>]*>?/gm, '') : '',
         attachments: form.attachments || []
       }
-    });
-    return res.data;
+    };
+    if (existingDraftId) {
+      const res = await api.put(`/local/drafts/${existingDraftId}`, payload);
+      return res.data;
+    } else {
+      const res = await api.post('/local/drafts', payload);
+      return res.data;
+    }
   };
 
   const handleBatchAction = async (action: string, destination?: string) => {
@@ -420,10 +426,12 @@ export default function App() {
       }).filter(Boolean);
 
       if (action === 'delete') {
-        await api.post('/messages/bulk', { folder: activeFolder, action: 'move', destination: 'Trash', uids });
+        const trashFolder = folders.find(f => f.specialUse === '\\Trash' || /trash|bin/i.test(f.path))?.path || 'Trash';
+        await api.post('/messages/bulk', { folder: activeFolder, action: 'move', destination: trashFolder, uids });
         setMessages(prev => prev.filter(m => !selectedIds.has(m.id)));
         if (selectedMessage && selectedIds.has(selectedMessage.id)) setSelectedMessage(null);
         setSelectedIds(new Set());
+        fetchFolders();
       } else if (action === 'read' || action === 'unread') {
         await api.post('/messages/bulk', { folder: activeFolder, action, uids });
         setMessages(prev => prev.map(m => selectedIds.has(m.id) ? { ...m, read: action === 'read' } : m));
@@ -473,11 +481,15 @@ export default function App() {
             }}
             onReplyAll={() => {
               if (!selectedMessage) return;
-              const sender = typeof selectedMessage.from === 'string'
-                ? selectedMessage.from
-                : selectedMessage.from?.[0]?.address || '';
+              const senderObj = typeof selectedMessage.from === 'string' ? { address: selectedMessage.from } : selectedMessage.from?.[0];
+              const sender = senderObj?.address || '';
+              const toList = [sender, ...(selectedMessage.to || []).map((a: any) => typeof a === 'string' ? a : a.address)].filter(Boolean);
+              const ccList = (selectedMessage.cc || []).map((a: any) => typeof a === 'string' ? a : a.address).filter(Boolean);
+              const uniqueTo = Array.from(new Set(toList)).filter(addr => String(addr).toLowerCase() !== settings.email.toLowerCase());
+              const uniqueCc = Array.from(new Set(ccList)).filter(addr => String(addr).toLowerCase() !== settings.email.toLowerCase() && !uniqueTo.includes(addr));
               openCompose({
-                to: sender,
+                to: uniqueTo.join(', '),
+                cc: uniqueCc.join(', '),
                 subject: `Re: ${selectedMessage.subject || ''}`,
                 body: `<br><br>--- Original Message ---<br>${selectedMessage.html || selectedMessage.text || ''}`
               });

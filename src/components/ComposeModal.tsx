@@ -13,7 +13,7 @@ interface ComposeModalProps {
   onActivate: (id: string) => void;
   onClose: (id: string) => void;
   onSend: (id: string, form: any) => Promise<void>;
-  onSaveDraft: (id: string, form: any) => Promise<any>;
+  onSaveDraft: (id: string, form: any, draftId?: string) => Promise<any>;
   initialData: any;
 }
 
@@ -164,19 +164,20 @@ export default function ComposeModal({
   };
 
   const save = async () => {
+    if (!dirty && form.draftId) return;
     setBusy(true);
     setStatus('Saving draft…');
     try {
       const prepared = prepareForm();
-      const draft = await onSaveDraft(windowId, prepared);
+      const draft = await onSaveDraft(windowId, prepared, form.draftId);
       setForm(current => ({
         ...current,
         senderDisplayName: prepared.senderDisplayName,
-        draftId: draft.id,
+        draftId: draft.id || current.draftId,
         ...(draft.providerContext?.rackspace ? { rackspace: draft.providerContext.rackspace } : {})
       }));
       setDirty(false);
-      setStatus('Draft saved automatically (30s inactivity).');
+      setStatus('Draft saved.');
     } catch (error: any) {
       setStatus(error.message || 'Draft save failed.');
     } finally {
@@ -184,8 +185,12 @@ export default function ComposeModal({
     }
   };
 
-  // Auto-save draft hook on 30 seconds of inactivity in the editor
-  useAutoSaveDraft(save, [form.to, form.cc, form.bcc, form.subject, form.body, dirty], 30_000);
+  // Auto-save draft hook on 30 seconds of inactivity in the editor when dirty
+  useAutoSaveDraft(() => {
+    if (dirty) {
+      save();
+    }
+  }, [dirty, form.to, form.cc, form.bcc, form.subject, form.body], 30_000);
 
   return (
     <div

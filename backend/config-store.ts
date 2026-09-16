@@ -87,6 +87,13 @@ export async function loadMailConfig() {
 
 export function publicMailConfig(config: any) {
   if (!config) return { configured: false };
-  const { password: _password, ...safe } = config;
+  const {
+    password: _password,
+    googleClientSecret: _gSec,
+    microsoftClientSecret: _mSec,
+    calendarClientSecret: _cSec,
+    contactsClientSecret: _coSec,
+    ...safe
+  } = config;
   return { configured: true, ...safe };
 }
