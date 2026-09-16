@@ -1,0 +1,7 @@
+{
+  "name": "Irumol Enterprise Mail",
+  "description": "A premium enterprise webmail client suite with advanced folders, compose modal, rich message preview, and server sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
