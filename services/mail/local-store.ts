@@ -88,6 +88,8 @@ export class LocalMailStore {
     `);
     const columns = this.db.prepare('PRAGMA table_info(messages)').all().map((column: any) => column.name);
     if (!columns.includes('from_name')) this.db.exec("ALTER TABLE messages ADD COLUMN from_name TEXT NOT NULL DEFAULT ''");
+    const jobColumns = this.db.prepare('PRAGMA table_info(delivery_jobs)').all().map((column: any) => column.name);
+    if (!jobColumns.includes('next_retry_at')) this.db.exec("ALTER TABLE delivery_jobs ADD COLUMN next_retry_at TEXT");
     const timestamp = now();
     this.db.prepare("UPDATE delivery_jobs SET status='queued', locked_at=NULL, updated_at=? WHERE status='processing'").run(timestamp);
     this.db.prepare("UPDATE messages SET status='sending', updated_at=? WHERE status='sending' AND id IN (SELECT message_id FROM delivery_jobs WHERE status='queued')").run(timestamp);
