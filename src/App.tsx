@@ -282,8 +282,16 @@ export default function App() {
       ? settings.signatures.find(s => s.id === settings.defaultSignatureId)?.html || settings.signatures[0]?.html || ''
       : '';
 
+    const isReply = Boolean(initialData.subject && initialData.subject.startsWith('Re:'));
+    const isForward = Boolean(initialData.subject && initialData.subject.startsWith('Fwd:'));
+    const shouldAddSig = signatureHtml && (
+      settings.signatureEnabled !== false &&
+      (!isReply || settings.signatureOnReply !== false) &&
+      (!isForward || settings.signatureOnForward !== false)
+    );
+
     let initialBody = initialData.body || '';
-    if (signatureHtml && !initialBody.includes(signatureHtml)) {
+    if (shouldAddSig && !initialBody.includes(signatureHtml)) {
       if (settings.signaturePlacement === 'above') {
         initialBody = `<div data-webmail-signature="true">${signatureHtml}</div><br>${initialBody}`;
       } else {
@@ -340,7 +348,11 @@ export default function App() {
         bcc: typeof form.bcc === 'string' ? form.bcc.split(',').map((s: string) => s.trim()).filter(Boolean) : (form.bcc || []),
         subject: form.subject || '',
         html: form.body || '',
-        text: form.body ? form.body.replace(/<[^>]*>?/gm, '') : ''
+        text: form.body ? form.body.replace(/<[^>]*>?/gm, '') : '',
+        fromName: form.senderDisplayName || settings.senderName,
+        attachments: form.attachments || [],
+        priority: form.priority || '3',
+        read_receipt: !!form.read_receipt
       };
       await api.post('/send', payload);
     }

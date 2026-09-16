@@ -162,16 +162,19 @@ export default function MessagePreview({
                   {message.attachments
                     .filter(att => att.contentType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp)$/i.test(att.filename || ''))
                     .map((att, idx) => {
-                      const src = att.contentBase64 ? `data:${att.contentType || 'image/png'};base64,${att.contentBase64}` : '';
+                      const downloadUrl = message.uid
+                        ? `/api/messages/${message.uid}/attachments/${idx}?folder=${encodeURIComponent(message.folderPath || 'INBOX')}`
+                        : (att.contentBase64 ? `data:${att.contentType || 'image/png'};base64,${att.contentBase64}` : '#');
+                      const displaySrc = att.contentBase64 ? `data:${att.contentType || 'image/png'};base64,${att.contentBase64}` : '';
                       return (
                         <div key={att.id || idx} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video flex items-center justify-center shadow-xs">
-                          {src ? (
-                            <img src={src} alt={att.filename || 'Attachment'} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          {displaySrc ? (
+                            <img src={displaySrc} alt={att.filename || 'Attachment'} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                           ) : (
                             <ImageIcon size={24} className="text-slate-400" />
                           )}
                           <a
-                            href={src || '#'}
+                            href={downloadUrl}
                             download={att.filename || 'image.png'}
                             className="absolute inset-0 bg-slate-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity space-x-1.5 p-2 text-center"
                           >
@@ -192,7 +195,9 @@ export default function MessagePreview({
                 {message.attachments
                   .filter(att => !(att.contentType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp)$/i.test(att.filename || '')))
                   .map((att, idx) => {
-                    const src = att.contentBase64 ? `data:${att.contentType || 'application/octet-stream'};base64,${att.contentBase64}` : '#';
+                    const downloadUrl = message.uid
+                      ? `/api/messages/${message.uid}/attachments/${idx}?folder=${encodeURIComponent(message.folderPath || 'INBOX')}`
+                      : (att.contentBase64 ? `data:${att.contentType || 'application/octet-stream'};base64,${att.contentBase64}` : '#');
                     return (
                       <div key={att.id || idx} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-xs hover:border-blue-300 transition-colors">
                         <div className="flex items-center space-x-3 truncate">
@@ -205,7 +210,7 @@ export default function MessagePreview({
                           </div>
                         </div>
                         <a
-                          href={src}
+                          href={downloadUrl}
                           download={att.filename || 'attachment'}
                           className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors border border-slate-200 shrink-0 ml-2"
                         >
