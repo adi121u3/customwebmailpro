@@ -349,7 +349,7 @@ export default function App() {
         subject: form.subject || '',
         html: form.body || '',
         text: form.body ? form.body.replace(/<[^>]*>?/gm, '') : '',
-        fromName: form.senderDisplayName || settings.senderName,
+        fromName: form.fromName || form.senderDisplayName || settings.senderName,
         attachments: form.attachments || [],
         priority: form.priority || '3',
         read_receipt: !!form.read_receipt
