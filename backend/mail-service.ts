@@ -155,7 +155,7 @@ export async function getMessage(config: any, folder: string, uid: number) {
           contentType: item.contentType,
           size: item.size,
           contentId: item.cid || null,
-          contentBase64: item.content ? item.content.toString('base64') : ''
+          contentBase64: (item.size && item.size < 256 * 1024 && item.content) ? item.content.toString('base64') : ''
         }))
       };
     } finally {

@@ -86,7 +86,19 @@ export async function loadMailConfig() {
 }
 
 export function publicMailConfig(config: any) {
-  if (!config) return { configured: false };
+  if (!config) return {
+    configured: false,
+    signatures: [],
+    defaultSignatureId: '',
+    signatureEnabled: false,
+    signatureOnReply: false,
+    signatureOnForward: false,
+    signaturePlacement: 'above',
+    defaultPriority: '3',
+    defaultReadReceipt: false,
+    senderName: '',
+    email: ''
+  };
   const {
     password: _password,
     googleClientSecret: _gSec,
@@ -95,5 +107,16 @@ export function publicMailConfig(config: any) {
     contactsClientSecret: _coSec,
     ...safe
   } = config;
-  return { configured: true, ...safe };
+  return {
+    configured: true,
+    signatures: [],
+    defaultSignatureId: '',
+    signatureEnabled: false,
+    signatureOnReply: false,
+    signatureOnForward: false,
+    signaturePlacement: 'above',
+    defaultPriority: '3',
+    defaultReadReceipt: false,
+    ...safe
+  };
 }

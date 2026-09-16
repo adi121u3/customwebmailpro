@@ -111,7 +111,7 @@ export default function SettingsModal({
             update('imapPort', 993);
             update('smtpPort', 587);
           }
-          window.dispatchEvent(new CustomEvent('app-toast', { detail: { message: `Successfully authorized with ${provider === 'google' ? 'Google' : 'Microsoft'}!`, type: 'success' } }));
+          window.dispatchEvent(new CustomEvent('app-toast', { detail: { message: `OAuth authorization code received for ${provider === 'google' ? 'Google' : 'Microsoft'}. Note: Full token exchange requires backend client credentials.`, type: 'info' } }));
         }
       };
       window.addEventListener('message', handleMessage);
