@@ -2,6 +2,8 @@ import 'dotenv/config';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
+import dns from 'dns';
+import net from 'net';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import express from 'express';
@@ -40,7 +42,7 @@ import { DeliveryWorker } from './services/mail/delivery-worker.js';
 import { createServer as createViteServer } from 'vite';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const DIST_PATH = fs.existsSync(path.join(ROOT, 'index.html')) ? ROOT : path.join(ROOT, 'dist');
+const DIST_PATH = path.resolve(ROOT, 'dist');
 const HOST = process.env.HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || 3000);
 const APP_TOKEN = process.env.APP_TOKEN || '';
@@ -86,9 +88,104 @@ app.use(cors({
 app.use(express.json({ limit: '30mb' }));
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, validate: false }));
 
+// Enforce APP_TOKEN if configured
+app.use('/api', (req, res, next) => {
+  if (!APP_TOKEN) return next();
+  const reqPath = req.path;
+  if (reqPath === '/health' || reqPath.startsWith('/auth/')) {
+    return next();
+  }
+  const token = req.headers['x-app-token'] || req.query.token;
+  if (token !== APP_TOKEN) {
+    return res.status(401).json({ error: { code: 'APP_TOKEN_REQUIRED', message: 'Valid APP_TOKEN header (x-app-token) is required.' } });
+  }
+  next();
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'customwebmail', version: '2.5.1' });
 });
+
+app.get('/api/readiness', (_req, res) => {
+  try {
+    const store = getLocalMailStore();
+    const count = store.db.prepare('SELECT COUNT(*) as cnt FROM messages').get();
+    res.json({ ok: true, status: 'ready', database: 'connected', totalMessages: (count as any)?.cnt || 0 });
+  } catch (err: any) {
+    res.status(503).json({ ok: false, status: 'not_ready', error: err.message });
+  }
+});
+
+app.get('/api/metrics', (_req, res) => {
+  try {
+    const store = getLocalMailStore();
+    const failedJobs = store.db.prepare("SELECT COUNT(*) as cnt FROM delivery_jobs WHERE status='failed'").get();
+    const queuedJobs = store.db.prepare("SELECT COUNT(*) as cnt FROM delivery_jobs WHERE status='queued'").get();
+    res.json({
+      ok: true,
+      failedJobCount: (failedJobs as any)?.cnt || 0,
+      queuedJobCount: (queuedJobs as any)?.cnt || 0,
+      uptimeSeconds: process.uptime()
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/setup/dns-check', async (req, res, next) => {
+  try {
+    const { domain, imapHost, imapPort, smtpHost, smtpPort } = req.body;
+    const results: any = { mx: [], spf: false, dkim: false, dmarc: false, imapPortOpen: false, smtpPortOpen: false };
+
+    const targetDomain = domain || (req.body.email ? req.body.email.split('@')[1] : '');
+    if (targetDomain) {
+      try {
+        const mxRecords = await dns.promises.resolveMx(targetDomain);
+        results.mx = mxRecords;
+      } catch (e: any) {
+        results.mxError = e.message;
+      }
+      try {
+        const txtRecords = await dns.promises.resolveTxt(targetDomain);
+        results.spf = txtRecords.some(txt => txt.join('').toLowerCase().includes('v=spf1'));
+        results.dmarc = txtRecords.some(txt => txt.join('').toLowerCase().includes('v=dmarc1'));
+      } catch (e: any) {
+        results.txtError = e.message;
+      }
+    }
+
+    if (imapHost && imapPort) {
+      results.imapPortOpen = await testPort(imapHost, Number(imapPort));
+    }
+    if (smtpHost && smtpPort) {
+      results.smtpPortOpen = await testPort(smtpHost, Number(smtpPort));
+    }
+
+    res.json({ ok: true, results });
+  } catch (error) {
+    next(error);
+  }
+});
+
+function testPort(host: string, port: number, timeoutMs = 5000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let resolved = false;
+    socket.setTimeout(timeoutMs);
+    socket.on('connect', () => {
+      resolved = true;
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('timeout', () => {
+      if (!resolved) { resolved = true; socket.destroy(); resolve(false); }
+    });
+    socket.on('error', () => {
+      if (!resolved) { resolved = true; socket.destroy(); resolve(false); }
+    });
+    socket.connect(port, host);
+  });
+}
 
 app.post('/api/auth/logout', (_req, res, next) => {
   try {

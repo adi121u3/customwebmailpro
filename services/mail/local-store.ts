@@ -11,6 +11,18 @@ function json(value: string, fallback = []) {
   try { return JSON.parse(value); } catch { return fallback; }
 }
 
+const RETRY_DELAYS_SECONDS = [0, 30, 120, 600, 1800, 7200];
+
+function isTemporaryError(error: any): boolean {
+  const msg = String(error?.message || '').toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+  if (['ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ESOCKET'].includes(code)) return true;
+  if (/timeout|socket|connection refused|reset|dns|temporary|421|try again/i.test(msg)) return true;
+  if (/535|authentication|550|mailbox unavailable|user unknown|invalid recipient/i.test(msg)) return false;
+  if (/^5\d\d/.test(code) || /5\d\d/.test(msg)) return false;
+  return true;
+}
+
 function now() { return new Date().toISOString(); }
 
 export class LocalMailStore {
@@ -57,6 +69,7 @@ export class LocalMailStore {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         locked_at TEXT,
+        next_retry_at TEXT,
         error_message TEXT
       );
       CREATE INDEX IF NOT EXISTS jobs_status_created ON delivery_jobs(status, created_at);
@@ -166,7 +179,7 @@ export class LocalMailStore {
     const timestamp = now();
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      const job: any = this.db.prepare("SELECT * FROM delivery_jobs WHERE status='queued' ORDER BY created_at LIMIT 1").get();
+      const job: any = this.db.prepare("SELECT * FROM delivery_jobs WHERE status='queued' AND (next_retry_at IS NULL OR next_retry_at <= ?) ORDER BY created_at LIMIT 1").get(timestamp);
       if (!job) { this.db.exec('COMMIT'); return null; }
       this.db.prepare("UPDATE delivery_jobs SET status='processing', attempts=attempts+1, locked_at=?, updated_at=? WHERE id=? AND status='queued'").run(timestamp, timestamp, job.id);
       this.db.prepare('UPDATE messages SET status=\'sending\',attempt_count=attempt_count+1,attempted_at=?,updated_at=?,error_message=NULL WHERE id=?').run(timestamp, timestamp, job.message_id);
@@ -179,7 +192,7 @@ export class LocalMailStore {
     const timestamp = now();
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      this.db.prepare("UPDATE delivery_jobs SET status='completed',updated_at=?,locked_at=NULL,error_message=NULL WHERE id=?").run(timestamp, job.id);
+      this.db.prepare("UPDATE delivery_jobs SET status='completed',updated_at=?,locked_at=NULL,error_message=NULL,next_retry_at=NULL WHERE id=?").run(timestamp, job.id);
       this.db.prepare("UPDATE messages SET status='sent',provider_message_id=?,completed_at=?,updated_at=?,error_message=NULL WHERE id=?")
         .run(result.messageId || null, timestamp, timestamp, job.message_id);
       this.db.exec('COMMIT');
@@ -188,11 +201,27 @@ export class LocalMailStore {
 
   failJob(job: any, error: any) {
     const timestamp = now();
+    const attempts = job.attempts || 1;
+    const isTemp = isTemporaryError(error);
     const safeError = String(error?.message || 'Delivery failed').slice(0, 2000);
+
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      this.db.prepare("UPDATE delivery_jobs SET status='failed',updated_at=?,locked_at=NULL,error_message=? WHERE id=?").run(timestamp, safeError, job.id);
-      this.db.prepare("UPDATE messages SET status='failed',completed_at=?,updated_at=?,error_message=? WHERE id=?").run(timestamp, timestamp, safeError, job.message_id);
+      if (isTemp && attempts < 6) {
+        const delaySec = RETRY_DELAYS_SECONDS[attempts] || 7200;
+        const nextRetryAt = new Date(Date.now() + delaySec * 1000).toISOString();
+        const errDesc = `Temporary failure—retrying (Attempt ${attempts}/6 in ${Math.round(delaySec / 60)}m): ${safeError}`;
+        this.db.prepare("UPDATE delivery_jobs SET status='queued', updated_at=?, locked_at=NULL, next_retry_at=?, error_message=? WHERE id=?")
+          .run(timestamp, nextRetryAt, errDesc, job.id);
+        this.db.prepare("UPDATE messages SET status='failed', updated_at=?, error_message=? WHERE id=?")
+          .run(timestamp, errDesc, job.message_id);
+      } else {
+        const errDesc = `Permanent failure (Attempts: ${attempts}): ${safeError}`;
+        this.db.prepare("UPDATE delivery_jobs SET status='failed', updated_at=?, locked_at=NULL, error_message=? WHERE id=?")
+          .run(timestamp, errDesc, job.id);
+        this.db.prepare("UPDATE messages SET status='failed', completed_at=?, updated_at=?, error_message=? WHERE id=?")
+          .run(timestamp, timestamp, errDesc, job.message_id);
+      }
       this.db.exec('COMMIT');
     } catch (databaseError) { this.db.exec('ROLLBACK'); throw databaseError; }
   }

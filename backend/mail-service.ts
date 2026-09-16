@@ -25,9 +25,12 @@ function smtpTransport(config: any) {
     secure: config.smtpSecure,
     auth: { user: config.email, pass: config.password },
     tls: { rejectUnauthorized: config.rejectUnauthorized },
-    connectionTimeout: 15_000,
-    greetingTimeout: 15_000,
-    socketTimeout: 30_000,
+    pool: true,
+    maxConnections: 2,
+    maxMessages: 50,
+    connectionTimeout: 60_000,
+    greetingTimeout: 30_000,
+    socketTimeout: 120_000,
     disableFileAccess: true,
     disableUrlAccess: true
   } as any);

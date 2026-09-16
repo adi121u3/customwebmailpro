@@ -7,7 +7,8 @@
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.js",
     "start": "cross-env NODE_ENV=production node dist/server.js",
-    "clean": "rm -rf dist",
+    "clean": "node -e \"const fs=require('fs'); fs.rmSync('dist', {recursive:true,force:true});\"",
+    "test": "npm run lint",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
