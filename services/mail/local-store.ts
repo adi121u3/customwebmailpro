@@ -32,12 +32,43 @@ export class LocalMailStore {
     this.db = new DatabaseSync(fileName);
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     this.migrate();
+    this.runBackup(fileName);
+  }
+
+  runBackup(fileName: string) {
+    try {
+      const backupDir = path.join(path.dirname(fileName), 'backups');
+      fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+      const dateStr = new Date().toISOString().split('T')[0];
+      const backupPath = path.join(backupDir, `backup-${dateStr}.sqlite`);
+      if (!fs.existsSync(backupPath)) {
+        fs.copyFileSync(fileName, backupPath);
+        // Clean up backups older than 7 days
+        const files = fs.readdirSync(backupDir);
+        if (files.length > 7) {
+          files.sort().slice(0, files.length - 7).forEach(f => {
+            try { fs.unlinkSync(path.join(backupDir, f)); } catch {}
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Automated backup warning:', e);
+    }
   }
 
   migrate() {
     this.db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
+        user_id TEXT DEFAULT 'default',
         folder TEXT NOT NULL CHECK(folder IN ('sent','drafts')),
         status TEXT NOT NULL CHECK(status IN ('draft','sending','sent','failed')),
         operation TEXT NOT NULL,
@@ -60,7 +91,7 @@ export class LocalMailStore {
         attempted_at TEXT,
         completed_at TEXT
       );
-      CREATE INDEX IF NOT EXISTS messages_folder_created ON messages(folder, created_at DESC);
+      CREATE INDEX IF NOT EXISTS messages_user_folder ON messages(user_id, folder, created_at DESC);
       CREATE TABLE IF NOT EXISTS delivery_jobs (
         id TEXT PRIMARY KEY,
         message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
@@ -88,6 +119,7 @@ export class LocalMailStore {
     `);
     const columns = this.db.prepare('PRAGMA table_info(messages)').all().map((column: any) => column.name);
     if (!columns.includes('from_name')) this.db.exec("ALTER TABLE messages ADD COLUMN from_name TEXT NOT NULL DEFAULT ''");
+    if (!columns.includes('user_id')) this.db.exec("ALTER TABLE messages ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'");
     const jobColumns = this.db.prepare('PRAGMA table_info(delivery_jobs)').all().map((column: any) => column.name);
     if (!jobColumns.includes('next_retry_at')) this.db.exec("ALTER TABLE delivery_jobs ADD COLUMN next_retry_at TEXT");
     const timestamp = now();
@@ -240,6 +272,36 @@ export class LocalMailStore {
       this.db.exec('COMMIT');
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
     return this.getMessage(id, false);
+  }
+
+  createUser(email: string, passwordPlain: string) {
+    const id = crypto.randomUUID();
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = crypto.scryptSync(passwordPlain, salt, 64).toString('hex');
+    const timestamp = now();
+    try {
+      this.db.prepare('INSERT INTO users(id, email, password_hash, salt, role, created_at) VALUES(?,?,?,?,?,?)')
+        .run(id, email.toLowerCase(), hash, salt, 'user', timestamp);
+      return { id, email: email.toLowerCase(), role: 'user' };
+    } catch (e: any) {
+      if (/unique/i.test(e.message)) throw new AppError(409, 'USER_EXISTS', 'User with this email already exists.');
+      throw e;
+    }
+  }
+
+  authenticateUser(email: string, passwordPlain: string) {
+    const user: any = this.db.prepare('SELECT * FROM users WHERE email=?').get(email.toLowerCase());
+    if (!user) throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password.');
+    const hash = crypto.scryptSync(passwordPlain, user.salt, 64).toString('hex');
+    if (!crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.password_hash, 'hex'))) {
+      throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password.');
+    }
+    return { id: user.id, email: user.email, role: user.role };
+  }
+
+  getUserById(id: string) {
+    const user: any = this.db.prepare('SELECT id, email, role, created_at FROM users WHERE id=?').get(id);
+    return user || null;
   }
 
   resolveUidMapping({ imapFolder, uidValidity, imapUid }: any) {

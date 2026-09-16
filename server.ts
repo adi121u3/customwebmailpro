@@ -187,6 +187,42 @@ function testPort(host: string, port: number, timeoutMs = 5000): Promise<boolean
   });
 }
 
+app.post('/api/auth/register', (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password || password.length < 6) {
+      throw new AppError(400, 'INVALID_INPUT', 'Valid email and password (min 6 chars) are required.');
+    }
+    const user = localStore.createUser(email, password);
+    res.json({ ok: true, user });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/auth/login', (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      throw new AppError(400, 'INVALID_INPUT', 'Email and password are required.');
+    }
+    const user = localStore.authenticateUser(email, password);
+    res.json({ ok: true, user });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/auth/me', (req, res, next) => {
+  try {
+    const userId = req.headers['x-user-id'] || 'default';
+    const user = localStore.getUserById(String(userId));
+    res.json({ ok: true, user: user || { id: 'default', email: process.env.MAIL_EMAIL || 'user@example.com', role: 'admin' } });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/auth/logout', (_req, res, next) => {
   try {
     res.json({ ok: true, message: 'Successfully logged out.' });

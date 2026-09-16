@@ -36,14 +36,28 @@ function smtpTransport(config: any) {
   } as any);
 }
 
-async function withImap(config: any, operation: any) {
-  const client = new ImapFlow(imapOptions(config));
-  try {
-    await client.connect();
-    return await operation(client);
-  } finally {
-    if (client.usable) await client.logout().catch(() => {});
-    else client.close();
+async function withImap(config: any, operation: any, maxRetries = 3) {
+  let attempt = 0;
+  while (true) {
+    const client = new ImapFlow(imapOptions(config));
+    try {
+      await client.connect();
+      return await operation(client);
+    } catch (error: any) {
+      attempt++;
+      const code = String(error?.code || '').toUpperCase();
+      const msg = String(error?.message || '').toLowerCase();
+      const isTemp = ['ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ESOCKET'].includes(code) ||
+        /timeout|socket|connection refused|reset|dns|temporary|try again/i.test(msg);
+      if (attempt >= maxRetries || !isTemp) {
+        throw error;
+      }
+      const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 1000, 10_000);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    } finally {
+      if (client.usable) await client.logout().catch(() => {});
+      else client.close();
+    }
   }
 }
 
