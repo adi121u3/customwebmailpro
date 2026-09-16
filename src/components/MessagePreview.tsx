@@ -163,7 +163,7 @@ export default function MessagePreview({
                     .filter(att => att.contentType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp)$/i.test(att.filename || ''))
                     .map((att, idx) => {
                       const downloadUrl = message.uid
-                        ? `/api/messages/${message.uid}/attachments/${idx}?folder=${encodeURIComponent(message.folderPath || 'INBOX')}`
+                        ? `/api/messages/${encodeURIComponent(message.folderPath || 'INBOX')}/${message.uid}/attachments/${att.id || idx}/download`
                         : (att.contentBase64 ? `data:${att.contentType || 'image/png'};base64,${att.contentBase64}` : '#');
                       const displaySrc = att.contentBase64 ? `data:${att.contentType || 'image/png'};base64,${att.contentBase64}` : '';
                       return (
@@ -196,7 +196,7 @@ export default function MessagePreview({
                   .filter(att => !(att.contentType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp)$/i.test(att.filename || '')))
                   .map((att, idx) => {
                     const downloadUrl = message.uid
-                      ? `/api/messages/${message.uid}/attachments/${idx}?folder=${encodeURIComponent(message.folderPath || 'INBOX')}`
+                      ? `/api/messages/${encodeURIComponent(message.folderPath || 'INBOX')}/${message.uid}/attachments/${att.id || idx}/download`
                       : (att.contentBase64 ? `data:${att.contentType || 'application/octet-stream'};base64,${att.contentBase64}` : '#');
                     return (
                       <div key={att.id || idx} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-xs hover:border-blue-300 transition-colors">

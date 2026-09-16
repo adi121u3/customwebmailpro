@@ -41,7 +41,7 @@ import { createServer as createViteServer } from 'vite';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DIST_PATH = fs.existsSync(path.join(ROOT, 'index.html')) ? ROOT : path.join(ROOT, 'dist');
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || 3000);
 const APP_TOKEN = process.env.APP_TOKEN || '';
 const localStore = getLocalMailStore();
@@ -272,6 +272,25 @@ app.get('/api/messages/:uid/attachments/:index', async (req, res, next) => {
       throw new AppError(400, 'INVALID_PARAMS', 'Valid message UID and attachment index are required.');
     }
     const { folder } = parse(messageQuerySchema, req.query);
+    const att = await getAttachment(await requireConfig(), folder, uid, index);
+    res.setHeader('Content-Type', att.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(att.filename)}"`);
+    res.send(att.content);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/messages/:folder/:uid/attachments/:id/download', async (req, res, next) => {
+  try {
+    const folder = decodeURIComponent(req.params.folder);
+    const uid = Number(req.params.uid);
+    const id = req.params.id;
+    if (!Number.isSafeInteger(uid) || uid < 1) {
+      throw new AppError(400, 'INVALID_PARAMS', 'Valid message UID is required.');
+    }
+    const index = id.startsWith('att-') ? parseInt(id.replace('att-', ''), 10) : Number(id);
+    if (!Number.isSafeInteger(index) || index < 0) {
+      throw new AppError(400, 'INVALID_PARAMS', 'Valid attachment index or id is required.');
+    }
     const att = await getAttachment(await requireConfig(), folder, uid, index);
     res.setHeader('Content-Type', att.contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(att.filename)}"`);
