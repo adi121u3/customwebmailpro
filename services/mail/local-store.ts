@@ -5,8 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'url';
 import { AppError } from '../../backend/errors.js';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
-const DEFAULT_DB = path.join(ROOT, 'data', 'customwebmail.sqlite');
+const DEFAULT_DB = path.join(process.cwd(), 'data', 'customwebmail.sqlite');
 
 function json(value: string, fallback = []) {
   try { return JSON.parse(value); } catch { return fallback; }

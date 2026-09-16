@@ -97,7 +97,7 @@ export default function SettingsModal({
         return;
       }
       const handleMessage = (event: MessageEvent) => {
-        if (event.data?.type === 'OAUTH_AUTH_SUCCESS' && event.data?.provider === provider) {
+        if ((event.data?.type === 'OAUTH_AUTH_CODE' || event.data?.type === 'OAUTH_AUTH_SUCCESS') && event.data?.provider === provider) {
           window.removeEventListener('message', handleMessage);
           update('authType', `${provider}_oauth`);
           if (provider === 'google') {

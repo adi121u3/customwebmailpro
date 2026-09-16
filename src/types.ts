@@ -2,6 +2,8 @@ export interface Message {
   id: string;
   uid?: string | number;
   folderPath: string;
+  remoteFolder?: string;
+  folder?: string;
   from: string | { name?: string; address: string }[];
   fromName?: string;
   to: string | { name?: string; address: string }[];

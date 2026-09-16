@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronDown, Clock3, Download, Image as ImageIcon, Paperclip, RotateCcw, X } from 'lucide-react';
 import { Message } from '../types';
+import api from '../api';
 
 interface MessagePreviewProps {
   message: Message;
@@ -26,6 +27,34 @@ export default function MessagePreview({
     setFrameHeight(430);
     setAllowRemoteImages(false);
   }, [message.id]);
+
+  const handleDownloadAttachment = async (att: any, idx: number) => {
+    if (!message.uid) {
+      if (att.contentBase64) {
+        const link = document.createElement('a');
+        link.href = `data:${att.contentType || 'application/octet-stream'};base64,${att.contentBase64}`;
+        link.download = att.filename || 'attachment';
+        link.click();
+      }
+      return;
+    }
+    const folder = message.folderPath || message.remoteFolder || message.folder || 'INBOX';
+    try {
+      const res = await api.get(`/messages/${encodeURIComponent(folder)}/${message.uid}/attachments/${att.id || idx}/download`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = att.filename || 'attachment';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download attachment', err);
+    }
+  };
 
   if (message.loading) {
     return (
@@ -162,9 +191,6 @@ export default function MessagePreview({
                   {message.attachments
                     .filter(att => att.contentType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp)$/i.test(att.filename || ''))
                     .map((att, idx) => {
-                      const downloadUrl = message.uid
-                        ? `/api/messages/${encodeURIComponent(message.folderPath || 'INBOX')}/${message.uid}/attachments/${att.id || idx}/download`
-                        : (att.contentBase64 ? `data:${att.contentType || 'image/png'};base64,${att.contentBase64}` : '#');
                       const displaySrc = att.contentBase64 ? `data:${att.contentType || 'image/png'};base64,${att.contentBase64}` : '';
                       return (
                         <div key={att.id || idx} className="group relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video flex items-center justify-center shadow-xs">
@@ -173,14 +199,14 @@ export default function MessagePreview({
                           ) : (
                             <ImageIcon size={24} className="text-slate-400" />
                           )}
-                          <a
-                            href={downloadUrl}
-                            download={att.filename || 'image.png'}
-                            className="absolute inset-0 bg-slate-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity space-x-1.5 p-2 text-center"
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadAttachment(att, idx)}
+                            className="absolute inset-0 bg-slate-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity space-x-1.5 p-2 text-center cursor-pointer"
                           >
                             <Download size={14} />
                             <span className="truncate">{att.filename || 'Download'}</span>
-                          </a>
+                          </button>
                         </div>
                       );
                     })}
@@ -195,9 +221,6 @@ export default function MessagePreview({
                 {message.attachments
                   .filter(att => !(att.contentType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp)$/i.test(att.filename || '')))
                   .map((att, idx) => {
-                    const downloadUrl = message.uid
-                      ? `/api/messages/${encodeURIComponent(message.folderPath || 'INBOX')}/${message.uid}/attachments/${att.id || idx}/download`
-                      : (att.contentBase64 ? `data:${att.contentType || 'application/octet-stream'};base64,${att.contentBase64}` : '#');
                     return (
                       <div key={att.id || idx} className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 shadow-xs hover:border-blue-300 transition-colors">
                         <div className="flex items-center space-x-3 truncate">
@@ -209,14 +232,14 @@ export default function MessagePreview({
                             <small className="text-[11px] text-slate-500">{formatSize(att.size)}</small>
                           </div>
                         </div>
-                        <a
-                          href={downloadUrl}
-                          download={att.filename || 'attachment'}
-                          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors border border-slate-200 shrink-0 ml-2"
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadAttachment(att, idx)}
+                          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors border border-slate-200 shrink-0 ml-2 cursor-pointer"
                         >
                           <Download size={14} />
                           <span>Download</span>
-                        </a>
+                        </button>
                       </div>
                     );
                   })}
