@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import crypto from 'crypto';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import express from 'express';
@@ -39,7 +40,7 @@ import { DeliveryWorker } from './services/mail/delivery-worker.js';
 import { createServer as createViteServer } from 'vite';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const DIST_PATH = path.join(ROOT, 'dist');
+const DIST_PATH = fs.existsSync(path.join(ROOT, 'index.html')) ? ROOT : path.join(ROOT, 'dist');
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 3000);
 const APP_TOKEN = process.env.APP_TOKEN || '';
@@ -143,13 +144,13 @@ app.get('/api/auth/google/callback', async (req, res) => {
   res.send(`
     <html>
       <body style="font-family:sans-serif; text-align:center; padding-top:50px; background:#f8fafc; color:#0f172a;">
-        <div style="max-width:400px; margin:0 auto; background:white; padding:32px; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.05);">
-          <h2 style="margin-bottom:12px; font-size:20px;">Google Authentication Successful!</h2>
-          <p style="color:#475569; font-size:14px; margin-bottom:24px;">Your Gmail account and associated extensions have been successfully authorized.</p>
+        <div style="max-width:440px; margin:0 auto; background:white; padding:32px; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.05);">
+          <h2 style="margin-bottom:12px; font-size:18px;">Google Authorization Code Received</h2>
+          <p style="color:#475569; font-size:13px; margin-bottom:20px;">Authorization code received. Backend token exchange and OAuth credential setup are required to complete IMAP/SMTP OAuth2 token storage.</p>
           <script>
             if (window.opener) {
-              window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', provider: 'google', code: ${JSON.stringify(code)} }, '*');
-              window.setTimeout(() => window.close(), 1000);
+              window.opener.postMessage({ type: 'OAUTH_AUTH_CODE', provider: 'google', code: ${JSON.stringify(code)} }, '*');
+              window.setTimeout(() => window.close(), 2000);
             }
           </script>
         </div>
@@ -186,13 +187,13 @@ app.get('/api/auth/microsoft/callback', async (req, res) => {
   res.send(`
     <html>
       <body style="font-family:sans-serif; text-align:center; padding-top:50px; background:#f8fafc; color:#0f172a;">
-        <div style="max-width:400px; margin:0 auto; background:white; padding:32px; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.05);">
-          <h2 style="margin-bottom:12px; font-size:20px;">Microsoft Authentication Successful!</h2>
-          <p style="color:#475569; font-size:14px; margin-bottom:24px;">Your Microsoft/Outlook account has been successfully authorized.</p>
+        <div style="max-width:440px; margin:0 auto; background:white; padding:32px; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.05);">
+          <h2 style="margin-bottom:12px; font-size:18px;">Microsoft Authorization Code Received</h2>
+          <p style="color:#475569; font-size:13px; margin-bottom:20px;">Authorization code received. Backend token exchange and OAuth credential setup are required to complete Outlook OAuth2 token storage.</p>
           <script>
             if (window.opener) {
-              window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', provider: 'microsoft', code: ${JSON.stringify(code)} }, '*');
-              window.setTimeout(() => window.close(), 1000);
+              window.opener.postMessage({ type: 'OAUTH_AUTH_CODE', provider: 'microsoft', code: ${JSON.stringify(code)} }, '*');
+              window.setTimeout(() => window.close(), 2000);
             }
           </script>
         </div>

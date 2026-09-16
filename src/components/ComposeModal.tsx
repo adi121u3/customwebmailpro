@@ -68,7 +68,10 @@ export default function ComposeModal({
     }
   }, [form.body]);
 
-  const patch = (name: string, value: any) => setForm(current => ({ ...current, [name]: value }));
+  const patch = (name: string, value: any) => {
+    setForm(current => ({ ...current, [name]: value }));
+    setDirty(true);
+  };
 
   const resolvedSenderName = (currentName: string) =>
     resolveSenderDisplayName({
